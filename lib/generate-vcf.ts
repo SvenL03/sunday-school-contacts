@@ -3,9 +3,23 @@ import type { Contact } from "./parse-excel";
 export function generateVcf(contacts: Contact[]): string {
   return contacts
     .map((c) => {
-      const name = c.name.replace(/\n/g, " ").trim();
+      const firstName = c.firstName.replace(/\n/g, " ").trim();
+      const lastName = c.lastName.replace(/\n/g, " ").trim();
+      const fullName = [firstName, lastName].filter(Boolean).join(" ");
       const email = c.email.trim();
-      return `BEGIN:VCARD\nVERSION:3.0\nFN:${name}\nEMAIL:${email}\nEND:VCARD`;
+      const phone = c.phone.trim();
+
+      const lines = [
+        "BEGIN:VCARD",
+        "VERSION:3.0",
+        `N:${lastName};${firstName};;;`,
+        `FN:${fullName}`,
+      ];
+      if (email) lines.push(`EMAIL:${email}`);
+      if (phone) lines.push(`TEL:${phone}`);
+      lines.push("END:VCARD");
+
+      return lines.join("\n");
     })
     .join("\n");
 }

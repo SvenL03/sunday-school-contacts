@@ -1,16 +1,20 @@
 import * as XLSX from "xlsx";
 
 export interface Contact {
-  name: string;
+  firstName: string;
+  lastName: string;
   email: string;
+  phone: string;
 }
 
 export interface ParseResult {
   contacts: Contact[];
   headers: string[];
   rows: Record<string, string>[];
-  detectedNameCol: string | null;
+  detectedFirstNameCol: string | null;
+  detectedLastNameCol: string | null;
   detectedEmailCol: string | null;
+  detectedPhoneCol: string | null;
 }
 
 export function parseExcelFile(file: File): Promise<ParseResult> {
@@ -26,7 +30,6 @@ export function parseExcelFile(file: File): Promise<ParseResult> {
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
 
-        // Convert to array of objects
         const rows: Record<string, string>[] = XLSX.utils.sheet_to_json(
           worksheet,
           { defval: "" }
@@ -36,30 +39,37 @@ export function parseExcelFile(file: File): Promise<ParseResult> {
           throw new Error("The spreadsheet appears to be empty.");
         }
 
-        // Get headers
         const headers = Object.keys(rows[0]);
 
-        // Auto-detect name and email columns
-        const detectedNameCol =
-          headers.find((h) => h.toLowerCase().includes("name")) ?? null;
+        const detectedFirstNameCol =
+          headers.find((h) => /first\s*name/i.test(h)) ??
+          headers.find((h) => /^first$/i.test(h)) ??
+          null;
+
+        const detectedLastNameCol =
+          headers.find((h) => /last\s*name/i.test(h)) ??
+          headers.find((h) => /^last$/i.test(h)) ??
+          null;
+
         const detectedEmailCol =
           headers.find((h) => h.toLowerCase().includes("email")) ?? null;
 
-        // Build contacts if both columns detected
+        const detectedPhoneCol =
+          headers.find((h) => /phone|mobile|cell|tel/i.test(h)) ?? null;
+
         let contacts: Contact[] = [];
-        if (detectedNameCol && detectedEmailCol) {
-          contacts = rows.map((row) => ({
-            name: String(row[detectedNameCol] ?? "").trim(),
-            email: String(row[detectedEmailCol] ?? "").trim(),
-          }));
+        if (detectedFirstNameCol && detectedLastNameCol && detectedEmailCol) {
+          contacts = buildContacts(rows, detectedFirstNameCol, detectedLastNameCol, detectedEmailCol, detectedPhoneCol ?? "");
         }
 
         resolve({
           contacts,
           headers,
           rows,
-          detectedNameCol,
+          detectedFirstNameCol,
+          detectedLastNameCol,
           detectedEmailCol,
+          detectedPhoneCol,
         });
       } catch (err) {
         reject(err instanceof Error ? err : new Error(String(err)));
@@ -73,11 +83,15 @@ export function parseExcelFile(file: File): Promise<ParseResult> {
 
 export function buildContacts(
   rows: Record<string, string>[],
-  nameCol: string,
-  emailCol: string
+  firstNameCol: string,
+  lastNameCol: string,
+  emailCol: string,
+  phoneCol: string
 ): Contact[] {
   return rows.map((row) => ({
-    name: String(row[nameCol] ?? "").trim(),
+    firstName: String(row[firstNameCol] ?? "").trim(),
+    lastName: String(row[lastNameCol] ?? "").trim(),
     email: String(row[emailCol] ?? "").trim(),
+    phone: phoneCol ? String(row[phoneCol] ?? "").trim() : "",
   }));
 }

@@ -19,8 +19,10 @@ export default function PreviewPage() {
   const router = useRouter();
 
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
-  const [nameCol, setNameCol] = useState<string>("");
+  const [firstNameCol, setFirstNameCol] = useState<string>("");
+  const [lastNameCol, setLastNameCol] = useState<string>("");
   const [emailCol, setEmailCol] = useState<string>("");
+  const [phoneCol, setPhoneCol] = useState<string>("");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [needsManualSelect, setNeedsManualSelect] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -36,16 +38,21 @@ export default function PreviewPage() {
       const result: ParseResult = JSON.parse(raw);
       setParseResult(result);
 
-      const nc = result.detectedNameCol ?? result.headers[0] ?? "";
-      const ec = result.detectedEmailCol ?? result.headers[1] ?? "";
-      setNameCol(nc);
-      setEmailCol(ec);
+      const fnc = result.detectedFirstNameCol ?? result.headers[0] ?? "";
+      const lnc = result.detectedLastNameCol ?? result.headers[1] ?? "";
+      const ec = result.detectedEmailCol ?? result.headers[2] ?? "";
+      const pc = result.detectedPhoneCol ?? "";
 
-      if (!result.detectedNameCol || !result.detectedEmailCol) {
+      setFirstNameCol(fnc);
+      setLastNameCol(lnc);
+      setEmailCol(ec);
+      setPhoneCol(pc);
+
+      if (!result.detectedFirstNameCol || !result.detectedLastNameCol || !result.detectedEmailCol) {
         setNeedsManualSelect(true);
       }
 
-      const built = buildContacts(result.rows, nc, ec);
+      const built = buildContacts(result.rows, fnc, lnc, ec, pc);
       setContacts(built);
       setEmailList(built.map((c) => c.email).filter(Boolean).join(", "));
     } catch {
@@ -55,11 +62,11 @@ export default function PreviewPage() {
 
   const applyColumnSelection = useCallback(() => {
     if (!parseResult) return;
-    const built = buildContacts(parseResult.rows, nameCol, emailCol);
+    const built = buildContacts(parseResult.rows, firstNameCol, lastNameCol, emailCol, phoneCol);
     setContacts(built);
     setEmailList(built.map((c) => c.email).filter(Boolean).join(", "));
     setNeedsManualSelect(false);
-  }, [parseResult, nameCol, emailCol]);
+  }, [parseResult, firstNameCol, lastNameCol, emailCol, phoneCol]);
 
   const handleDownloadVcf = () => {
     downloadVcf(contacts, "sunday-school-contacts.vcf");
@@ -71,7 +78,6 @@ export default function PreviewPage() {
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 3000);
     } catch {
-      // fallback: select the textarea
       const ta = document.getElementById("email-textarea") as HTMLTextAreaElement | null;
       ta?.select();
     }
@@ -85,6 +91,36 @@ export default function PreviewPage() {
     );
   }
 
+  const ColSelect = ({
+    label,
+    value,
+    onChange,
+    optional,
+  }: {
+    label: string;
+    value: string;
+    onChange: (v: string) => void;
+    optional?: boolean;
+  }) => (
+    <div className="flex flex-col gap-1">
+      <label className="text-sm font-medium text-amber-700">
+        {label} {optional && <span className="text-amber-400 font-normal">(optional)</span>}
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="border border-amber-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+      >
+        {optional && <option value="">— none —</option>}
+        {parseResult.headers.map((h) => (
+          <option key={h} value={h}>
+            {h}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-8">
       {/* Back link */}
@@ -97,47 +133,19 @@ export default function PreviewPage() {
         </button>
       </div>
 
-      {/* Column picker (shown when auto-detect fails) */}
+      {/* Column picker */}
       {needsManualSelect && (
         <Card className="border-amber-200 bg-amber-50">
           <CardHeader className="pb-2">
             <CardTitle className="text-amber-800 text-base">
-              Could not auto-detect columns — please select them
+              Select which columns to use
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-end">
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-amber-700">
-                Name column
-              </label>
-              <select
-                value={nameCol}
-                onChange={(e) => setNameCol(e.target.value)}
-                className="border border-amber-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
-              >
-                {parseResult.headers.map((h) => (
-                  <option key={h} value={h}>
-                    {h}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-amber-700">
-                Email column
-              </label>
-              <select
-                value={emailCol}
-                onChange={(e) => setEmailCol(e.target.value)}
-                className="border border-amber-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
-              >
-                {parseResult.headers.map((h) => (
-                  <option key={h} value={h}>
-                    {h}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <CardContent className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
+            <ColSelect label="First Name column" value={firstNameCol} onChange={setFirstNameCol} />
+            <ColSelect label="Last Name column" value={lastNameCol} onChange={setLastNameCol} />
+            <ColSelect label="Email column" value={emailCol} onChange={setEmailCol} />
+            <ColSelect label="Phone column" value={phoneCol} onChange={setPhoneCol} optional />
             <Button
               onClick={applyColumnSelection}
               className="bg-amber-500 hover:bg-amber-600 text-white"
@@ -148,21 +156,22 @@ export default function PreviewPage() {
         </Card>
       )}
 
-      {/* Summary */}
+      {/* Summary + export buttons */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold text-blue-900">
             {contacts.length} contact{contacts.length !== 1 ? "s" : ""} found
           </h2>
           <p className="text-blue-500 text-sm mt-0.5">
-            Name column:{" "}
-            <span className="font-semibold text-blue-700">{nameCol}</span> •
-            Email column:{" "}
-            <span className="font-semibold text-blue-700">{emailCol}</span>
+            <span className="font-semibold text-blue-700">{firstNameCol}</span> +{" "}
+            <span className="font-semibold text-blue-700">{lastNameCol}</span> •{" "}
+            Email: <span className="font-semibold text-blue-700">{emailCol}</span>
+            {phoneCol && (
+              <> • Phone: <span className="font-semibold text-blue-700">{phoneCol}</span></>
+            )}
           </p>
         </div>
 
-        {/* Export buttons */}
         <div className="flex gap-3 flex-wrap">
           <Button
             onClick={handleDownloadVcf}
@@ -212,44 +221,35 @@ export default function PreviewPage() {
       {/* Contacts table */}
       <Card className="border-blue-100 shadow-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-blue-800 text-base">
-            Contact Preview
-          </CardTitle>
+          <CardTitle className="text-blue-800 text-base">Contact Preview</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto rounded-b-xl">
             <Table>
               <TableHeader>
                 <TableRow className="bg-blue-50">
-                  <TableHead className="text-blue-700 font-semibold w-8">
-                    #
-                  </TableHead>
-                  <TableHead className="text-blue-700 font-semibold">
-                    Name
-                  </TableHead>
-                  <TableHead className="text-blue-700 font-semibold">
-                    Email
-                  </TableHead>
+                  <TableHead className="text-blue-700 font-semibold w-8">#</TableHead>
+                  <TableHead className="text-blue-700 font-semibold">First Name</TableHead>
+                  <TableHead className="text-blue-700 font-semibold">Last Name</TableHead>
+                  <TableHead className="text-blue-700 font-semibold">Email</TableHead>
+                  <TableHead className="text-blue-700 font-semibold">Phone</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {contacts.map((contact, i) => (
-                  <TableRow
-                    key={i}
-                    className="hover:bg-blue-50/50 transition-colors"
-                  >
-                    <TableCell className="text-blue-300 text-xs">
-                      {i + 1}
+                  <TableRow key={i} className="hover:bg-blue-50/50 transition-colors">
+                    <TableCell className="text-blue-300 text-xs">{i + 1}</TableCell>
+                    <TableCell className="font-medium text-blue-900">
+                      {contact.firstName || <span className="text-gray-400 italic">—</span>}
                     </TableCell>
                     <TableCell className="font-medium text-blue-900">
-                      {contact.name || (
-                        <span className="text-gray-400 italic">—</span>
-                      )}
+                      {contact.lastName || <span className="text-gray-400 italic">—</span>}
                     </TableCell>
                     <TableCell className="text-blue-700">
-                      {contact.email || (
-                        <span className="text-gray-400 italic">—</span>
-                      )}
+                      {contact.email || <span className="text-gray-400 italic">—</span>}
+                    </TableCell>
+                    <TableCell className="text-blue-600">
+                      {contact.phone || <span className="text-gray-400 italic">—</span>}
                     </TableCell>
                   </TableRow>
                 ))}
